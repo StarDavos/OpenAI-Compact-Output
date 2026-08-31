@@ -1,0 +1,59 @@
+{
+  "name": "compact-code-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A compact ChatGPT MCP App widget for complete, copyable code without giant chat messages.",
+  "scripts": {
+    "build:web": "esbuild web/main.tsx --bundle --minify --format=iife --platform=browser --target=es2022 --outfile=web/dist/widget.js --define:process.env.NODE_ENV='\"production\"' && node scripts/build-widget-assets.mjs",
+    "build:server": "tsc -p tsconfig.server.json",
+    "build": "npm run build:web && npm run build:server",
+    "typecheck:worker": "tsc -p tsconfig.worker.json --noEmit",
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.web.json --noEmit && npm run typecheck:worker",
+    "lint": "eslint server shared web worker tests scripts",
+    "test": "vitest run",
+    "scan:dangerous": "node scripts/security-static-scan.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "scan:public-release": "node scripts/audit-public-release.mjs",
+    "scan:public-bundle": "node scripts/audit-public-bundle.mjs",
+    "scan:worker-config": "node scripts/validate-worker-config.mjs",
+    "scan:worker-production-config": "node scripts/validate-worker-production-config.mjs",
+    "start": "node dist/server/server.js",
+    "dev": "npm run build && node --enable-source-maps dist/server/server.js",
+    "worker:dev": "npm run build:web && wrangler dev --local --log-level error --show-interactive-dev-session=false",
+    "worker:dry-run:production": "npm run build:web && npm run scan:worker-production-config && wrangler deploy --dry-run --outdir .public-release-build --config wrangler.production.jsonc",
+    "worker:deploy:bootstrap": "npm run build:web && wrangler deploy --config wrangler.deploy.jsonc",
+    "worker:deploy:production": "npm run build:web && npm run scan:worker-production-config && wrangler deploy --config wrangler.production.jsonc",
+    "smoke:mcp": "node scripts/smoke-mcp.mjs",
+    "smoke:security": "node scripts/smoke-security.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.1.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/server": "2.0.0",
+    "@openai/apps-sdk-ui": "^0.2.2",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "agents": "0.21.0",
+    "esbuild": "^0.25.9",
+    "eslint": "^10.9.1",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-syntax-highlighter": "^16.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^3.2.4",
+    "wrangler": "4.127.0"
+  },
+  "overrides": {
+    "lodash": "4.18.1"
+  }
+}

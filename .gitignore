@@ -1,0 +1,17 @@
+node_modules/
+dist/
+web/dist/
+.public-release-build/
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+.wrangler/
+tunnel-client-*/
+*.secret
+*.secrets
+*.secrets.local
+*.log
+.DS_Store
+coverage/
