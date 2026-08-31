@@ -1,0 +1,266 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies reproducibly
+        run: npm ci --no-audit --no-fund
+
+      - name: Dependency vulnerability gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm audit --audit-level=high
+          npm ls lodash | grep -q 'lodash@4.18.1'
+
+      - name: Secret-pattern scan
+        run: npm run scan:secrets
+
+      - name: Public release privacy scan
+        run: npm run scan:public-release
+
+      - name: Worker config boundary
+        run: npm run scan:worker-config
+
+      - name: Production Worker config boundary
+        run: npm run scan:worker-production-config
+
+      - name: Dangerous API review
+        run: npm run scan:dangerous
+
+      - name: Typecheck Node, widget, and Worker
+        run: npm run typecheck
+
+      - name: Security lint
+        run: npm run lint
+
+      - name: Unit and adversarial tests
+        run: npm test
+
+      - name: Build Node server and widget
+        run: npm run build
+
+      - name: Build production Worker dry-run bundle
+        run: npm run worker:dry-run:production
+
+      - name: Audit generated production Worker bundle
+        run: npm run scan:public-bundle
+
+      - name: Native MCP and security smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup_server() {
+            status=$?
+            kill -TERM "$SERVER_PID" 2>/dev/null || true
+            wait "$SERVER_PID" 2>/dev/null || true
+            exit "$status"
+          }
+
+          node dist/server/server.js > /tmp/compact-code-viewer.log 2>&1 &
+          SERVER_PID=$!
+          trap cleanup_server EXIT
+
+          for _ in {1..20}; do
+            if curl -fsS http://127.0.0.1:8787/healthz > /tmp/health.json; then
+              break
+            fi
+            sleep 0.25
+          done
+
+          cat /tmp/health.json
+          grep -q '"ok":true' /tmp/health.json
+          npm run smoke:mcp
+          npm run smoke:security
+
+          if grep -Eq 'line_0001|fixtures/smoke|unicode-🚀|\$variable <tag>|Ignore previous instructions|alert\(1\)|whoami|\$env:SECRET|TEST_ONLY_NOT_A_SECRET' /tmp/compact-code-viewer.log; then
+            echo 'Source-code content appeared in native server logs.' >&2
+            exit 1
+          fi
+
+          kill -TERM "$SERVER_PID"
+          wait "$SERVER_PID"
+          trap - EXIT
+
+          if curl -fsS --max-time 1 http://127.0.0.1:8787/healthz >/dev/null 2>&1; then
+            echo 'Native smoke server did not shut down cleanly.' >&2
+            exit 1
+          fi
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
+      - name: Build production container
+        run: docker compose build --pull
+
+      - name: Inspect production image contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE=compact-code-viewer:local
+          docker image inspect "$IMAGE" --format 'runtime_user={{.Config.User}} size_bytes={{.Size}}'
+          test "$(docker image inspect "$IMAGE" --format '{{.Config.User}}')" = "node"
+          docker run --rm --entrypoint sh "$IMAGE" -c '
+            test ! -e /app/.env &&
+            test ! -e /app/.dev.vars &&
+            test ! -e /app/.git &&
+            test ! -e /app/server &&
+            test ! -e /app/shared &&
+            test ! -e /app/worker &&
+            test ! -e /app/wrangler.jsonc &&
+            test ! -e /app/tests &&
+            test ! -e /app/scripts &&
+            test ! -e /app/docs &&
+            test ! -e /app/web/main.tsx &&
+            test ! -e /app/package-lock.json
+          '
+
+      - name: Hardened container MCP smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            status=$?
+            if [ "$status" -ne 0 ]; then
+              docker compose logs --no-color || true
+            fi
+            docker compose down --remove-orphans || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+
+          docker compose up -d --no-build
+          CID="$(docker compose ps -q compact-code-viewer)"
+          test -n "$CID"
+
+          for _ in {1..40}; do
+            HEALTH="$(docker inspect "$CID" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}')"
+            if [ "$HEALTH" = "healthy" ]; then
+              break
+            fi
+            if [ "$HEALTH" = "unhealthy" ]; then
+              exit 1
+            fi
+            sleep 0.5
+          done
+
+          test "$(docker inspect "$CID" --format '{{.State.Health.Status}}')" = "healthy"
+          curl -fsS -D /tmp/container-headers.txt -o /tmp/container-health.json http://127.0.0.1:8787/healthz
+          cat /tmp/container-health.json
+          grep -q '"ok":true' /tmp/container-health.json
+          if grep -qi '^x-powered-by:' /tmp/container-headers.txt; then
+            echo 'Unexpected X-Powered-By header.' >&2
+            exit 1
+          fi
+
+          MCP_URL=http://127.0.0.1:8787/mcp npm run smoke:mcp
+          MCP_URL=http://127.0.0.1:8787/mcp npm run smoke:security
+
+          test "$(docker inspect "$CID" --format '{{.Config.User}}')" = "node"
+          test "$(docker inspect "$CID" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+          test "$(docker inspect "$CID" --format '{{.HostConfig.Privileged}}')" = "false"
+          test "$(docker inspect "$CID" --format '{{.HostConfig.Init}}')" = "true"
+          docker inspect "$CID" --format '{{json .HostConfig.CapDrop}}' | grep -q 'ALL'
+          docker inspect "$CID" --format '{{json .HostConfig.SecurityOpt}}' | grep -q 'no-new-privileges'
+          test "$(docker inspect "$CID" --format '{{.HostConfig.PidsLimit}}')" = "128"
+          test "$(docker inspect "$CID" --format '{{.HostConfig.Memory}}')" = "536870912"
+          test "$(docker inspect "$CID" --format '{{.HostConfig.NanoCpus}}')" = "1000000000"
+
+          docker inspect "$CID" | jq -e '.[0].Mounts | length == 0'
+          docker inspect "$CID" | jq -e '.[0].HostConfig.Tmpfs["/tmp"] != null'
+          docker inspect "$CID" | jq -e '.[0].HostConfig.PortBindings["8787/tcp"][0].HostIp == "127.0.0.1"'
+          docker port "$CID" 8787/tcp | grep -qx '127.0.0.1:8787'
+
+          NETWORK_ID="$(docker inspect "$CID" | jq -r '.[0].NetworkSettings.Networks | to_entries[0].value.NetworkID')"
+          docker network inspect "$NETWORK_ID" | jq -e '.[0].Driver == "bridge"'
+          docker network inspect "$NETWORK_ID" | jq -e '.[0].Options["com.docker.network.bridge.enable_ip_masquerade"] == "false"'
+          docker network inspect "$NETWORK_ID" | jq -e '.[0].Options["com.docker.network.bridge.enable_icc"] == "false"'
+          docker network inspect "$NETWORK_ID" | jq -e '.[0].Options["com.docker.network.bridge.host_binding_ipv4"] == "127.0.0.1"'
+
+          if docker exec "$CID" node -e "import('node:fs').then((fs) => fs.writeFileSync('/app/dist/should-not-write', 'x'))" >/dev/null 2>&1; then
+            echo 'Read-only root filesystem check failed: write unexpectedly succeeded.' >&2
+            exit 1
+          fi
+          docker exec "$CID" node -e "import('node:fs').then((fs) => { fs.writeFileSync('/tmp/write-ok', 'x'); fs.unlinkSync('/tmp/write-ok'); })"
+
+          if docker exec "$CID" node -e "fetch('https://example.com', { signal: AbortSignal.timeout(3000) }).then(() => process.exit(0), () => process.exit(1))"; then
+            echo 'Masquerade-disabled network check failed: outbound HTTPS unexpectedly succeeded.' >&2
+            exit 1
+          fi
+
+          docker compose logs --no-color > /tmp/container.log
+          test "$(grep -c '\[render_code\]' /tmp/container.log)" = "5"
+          if grep -Eq 'line_0001|fixtures/smoke|unicode-🚀|\$variable <tag>|Ignore previous instructions|alert\(1\)|whoami|\$env:SECRET|TEST_ONLY_NOT_A_SECRET' /tmp/container.log; then
+            echo 'Source-code content appeared in container logs.' >&2
+            exit 1
+          fi
+
+      - name: Local Cloudflare Worker MCP and security smoke tests
+        shell: bash
+        env:
+          CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: "false"
+          CLOUDFLARE_INCLUDE_PROCESS_ENV: "false"
+        run: |
+          set -euo pipefail
+
+          cleanup_worker() {
+            status=$?
+            kill -TERM "$WORKER_PID" 2>/dev/null || true
+            wait "$WORKER_PID" 2>/dev/null || true
+            if [ "$status" -ne 0 ]; then
+              cat /tmp/cloudflare-worker.log || true
+            fi
+            exit "$status"
+          }
+
+          npm run build:web
+          ./node_modules/.bin/wrangler dev --local --ip 127.0.0.1 --port 8788 --log-level error --show-interactive-dev-session=false > /tmp/cloudflare-worker.log 2>&1 &
+          WORKER_PID=$!
+          trap cleanup_worker EXIT
+
+          for _ in {1..60}; do
+            if ! kill -0 "$WORKER_PID" 2>/dev/null; then
+              echo 'Local Worker process exited before health check passed.' >&2
+              exit 1
+            fi
+            if curl -fsS http://127.0.0.1:8788/healthz > /tmp/worker-health.json; then
+              break
+            fi
+            sleep 0.25
+          done
+
+          curl -fsS http://127.0.0.1:8788/healthz > /tmp/worker-health.json
+          cat /tmp/worker-health.json
+          grep -q '"runtime":"cloudflare-worker"' /tmp/worker-health.json
+          MCP_URL=http://127.0.0.1:8788/mcp npm run smoke:mcp
+          MCP_URL=http://127.0.0.1:8788/mcp npm run smoke:security
+
+          if grep -Eq 'line_0001|fixtures/smoke|unicode-🚀|\$variable <tag>|Ignore previous instructions|alert\(1\)|whoami|\$env:SECRET|TEST_ONLY_NOT_A_SECRET' /tmp/cloudflare-worker.log; then
+            echo 'Source-code content appeared in Worker logs.' >&2
+            exit 1
+          fi
+
+          kill -TERM "$WORKER_PID"
+          wait "$WORKER_PID" || true
+          trap - EXIT
