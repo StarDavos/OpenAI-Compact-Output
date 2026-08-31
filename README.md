@@ -38,6 +38,8 @@ No user needs credentials or identifiers belonging to the original developer.
 
 See **[docs/PUBLIC_RELEASE.md](docs/PUBLIC_RELEASE.md)** for the complete self-hosted Cloudflare deployment guide, including Cloudflare Zero Trust Free onboarding and ChatGPT OAuth setup.
 
+Production deployments also expose authenticated, non-secret Cloudflare Worker version metadata through `/healthz`. Tagging the Worker version with the reviewed Git commit lets an operator prove which source revision is actually live. See **[docs/DEPLOYMENT_PROVENANCE.md](docs/DEPLOYMENT_PROVENANCE.md)**.
+
 ### Local Node / Docker
 
 The original local path remains available for development and private testing:
@@ -102,6 +104,7 @@ The production Worker configuration is designed to use:
 - Managed OAuth for ChatGPT/non-browser MCP authentication;
 - preview URLs disabled;
 - Cloudflare-native rate limiting;
+- Cloudflare Version Metadata for authenticated deployment provenance;
 - no KV, D1, R2, Durable Objects, Queues, Analytics Engine, or application source-storage binding;
 - no application runtime secret;
 - Worker observability disabled;
@@ -144,6 +147,7 @@ before publishing any release.
 ## Security and architecture documentation
 
 - [Public/self-hosted Cloudflare setup](docs/PUBLIC_RELEASE.md)
+- [Deployment provenance](docs/DEPLOYMENT_PROVENANCE.md)
 - [Security architecture](docs/SECURITY_ARCHITECTURE.md)
 - [Cloudflare implementation notes](docs/CLOUDFLARE_DEPLOYMENT.md)
 
