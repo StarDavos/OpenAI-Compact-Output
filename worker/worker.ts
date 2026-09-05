@@ -34,8 +34,15 @@ type RateLimiter = {
   limit(input: { key: string }): Promise<{ success: boolean }>;
 };
 
+type WorkerVersionMetadata = {
+  id?: string;
+  tag?: string;
+  timestamp?: string;
+};
+
 type WorkerEnv = {
   MCP_RATE_LIMITER?: RateLimiter;
+  CF_VERSION_METADATA?: WorkerVersionMetadata;
 };
 
 type AccessIdentity = {
@@ -65,6 +72,17 @@ function withSecurityHeaders(response: Response): Response {
     statusText: response.statusText,
     headers,
   });
+}
+
+function readWorkerVersionMetadata(env: WorkerEnv) {
+  const metadata = env.CF_VERSION_METADATA;
+  if (!metadata?.id) return null;
+
+  return {
+    id: metadata.id,
+    tag: metadata.tag ?? null,
+    timestamp: metadata.timestamp ?? null,
+  };
 }
 
 async function parseJsonBodyWithinLimit(request: Request): Promise<ParsedBodyResult> {
@@ -257,7 +275,13 @@ export default {
 
     if (url.pathname === "/healthz") {
       if (request.method !== "GET") return safeJson(405, { error: "Method not allowed" });
-      return safeJson(200, { ok: true, service: SERVER_NAME, version: SERVER_VERSION, runtime: "cloudflare-worker" });
+      return safeJson(200, {
+        ok: true,
+        service: SERVER_NAME,
+        version: SERVER_VERSION,
+        runtime: "cloudflare-worker",
+        workerVersion: readWorkerVersionMetadata(env),
+      });
     }
 
     if (request.method === "POST") {

@@ -150,17 +150,27 @@ npm run typecheck
 npm run lint
 npm test
 npm run build
+npm run worker:dry-run:production
+npm run scan:public-bundle
 ```
 
 All commands must pass.
 
-## 9. Deploy the protected production Worker
+## 9. Deploy the protected production Worker with provenance
 
-Only after Access and Managed OAuth are configured:
+Only after Access and Managed OAuth are configured, capture the exact reviewed Git commit:
 
 ```bash
-npm run worker:deploy:production
+git rev-parse HEAD
 ```
+
+Then deploy with that commit SHA as the Cloudflare Worker version tag:
+
+```bash
+npm run worker:deploy:production -- --tag <GIT_COMMIT_SHA> --message "Compact Code Viewer Git <GIT_COMMIT_SHA>"
+```
+
+Do not place credentials, account IDs, email addresses, tokens, or other sensitive values in the version tag or deployment message.
 
 The resulting URL will be under the user's own Cloudflare Workers subdomain, for example:
 
@@ -170,7 +180,9 @@ https://compact-code-viewer.<YOUR_WORKERS_SUBDOMAIN>.workers.dev
 
 Preview URLs remain disabled by the project configuration.
 
-## 10. Verify the security boundary before ChatGPT
+See [DEPLOYMENT_PROVENANCE.md](DEPLOYMENT_PROVENANCE.md) for the complete Git-to-Cloudflare verification procedure.
+
+## 10. Verify the security boundary and deployed revision before ChatGPT
 
 Without an OAuth token, `/mcp` and `/healthz` should be rejected by Cloudflare Access.
 
@@ -182,13 +194,21 @@ curl -i https://compact-code-viewer.<YOUR_WORKERS_SUBDOMAIN>.workers.dev/healthz
 curl -i https://compact-code-viewer.<YOUR_WORKERS_SUBDOMAIN>.workers.dev/.well-known/oauth-authorization-server
 ```
 
-Expected behavior:
+Expected unauthenticated behavior:
 
 - `/mcp`: `401 Unauthorized` without a valid Access token.
 - `/healthz`: `401 Unauthorized` without a valid Access token.
 - OAuth authorization-server discovery: JSON describing the user's own Cloudflare Access issuer and endpoints.
 
 Do not continue if the MCP endpoint is anonymously callable.
+
+After authenticating through the normal Cloudflare Access flow, the `/healthz` response should include a `workerVersion` object. Confirm:
+
+- `workerVersion.id` is present;
+- `workerVersion.tag` exactly equals the Git commit SHA intentionally deployed;
+- the matching GitHub commit passed the release CI/security gates.
+
+If `workerVersion` is `null`, or the tag does not match the intended Git commit, deployment provenance is not verified and the release should not be treated as the reviewed build.
 
 ## 11. Connect ChatGPT
 
@@ -217,9 +237,13 @@ Expected behavior:
 - Full View works;
 - no integrity warning appears for a complete payload.
 
+Also run a deterministic large-payload acceptance test (for example, 700 lines) and compare the copied result exactly with the expected source rather than checking only first/last-line markers.
+
 ## Privacy and data-flow statement
 
 Compact Code Viewer intentionally has no application source-storage feature. Submitted source is processed transiently to validate and render the response. The Worker configuration contains no KV, D1, R2, Durable Object, Queue, Analytics Engine, or application observability binding for source content.
+
+Cloudflare Version Metadata is deployment/control-plane metadata only. It identifies the running Worker version and does not store submitted source code.
 
 This is not a promise that Cloudflare, OpenAI, browsers, operating systems, or networks retain zero operational metadata. Public documentation should state the narrower enforceable guarantee: Compact Code Viewer does not intentionally persist source content, log source content, or send source content to an unrelated third-party service.
 

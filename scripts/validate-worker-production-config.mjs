@@ -13,6 +13,9 @@ if (config.preview_urls !== false) failures.push("production preview URLs must r
 if (config.send_metrics !== false) failures.push("send_metrics must remain disabled");
 if (config.observability?.enabled !== false) failures.push("Worker observability must remain disabled");
 if (config.dependencies_instrumentation?.enabled !== false) failures.push("dependency instrumentation must remain disabled");
+if (config.version_metadata?.binding !== "CF_VERSION_METADATA") {
+  failures.push("production version metadata binding must be CF_VERSION_METADATA");
+}
 
 for (const key of [
   "account_id",
@@ -72,4 +75,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log("Production Worker config PASS: workers.dev enabled, previews disabled, no storage/secrets/routes, 180 req/min authenticated-user limiter configured");
+console.log("Production Worker config PASS: workers.dev enabled, previews disabled, version metadata enabled, no storage/secrets/routes, 180 req/min authenticated-user limiter configured");
