@@ -30,6 +30,9 @@ export const WIDGET_RESOURCE_METADATA = {
 export const WIDGET_CONTENT_META = {
   ui: {
     prefersBorder: true,
+    permissions: {
+      clipboardWrite: {},
+    },
     csp: {
       connectDomains: [] as string[],
       resourceDomains: [] as string[],
