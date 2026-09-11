@@ -10,7 +10,9 @@ The renderer is intentionally narrow:
 - accepted source is never silently truncated;
 - each independently copyable unit should be rendered in its own card;
 - heredoc/here-string wrappers stay intact as one atomic copy unit;
-- Copy remains locked unless line/character integrity metadata matches.
+- Copy remains locked unless line/character integrity metadata matches;
+- `Copied` is shown only after the browser clipboard write actually succeeds;
+- if the host blocks clipboard access, the widget exposes an exact-source manual selection path instead of silently reporting success or using a legacy programmatic fallback.
 
 ## Deployment options
 
