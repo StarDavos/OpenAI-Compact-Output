@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createWidgetResourceResult, WIDGET_CONTENT_META } from "../shared/mcp-app.js";
+import {
+  createWidgetResourceResult,
+  RESOURCE_URI,
+  WIDGET_CONTENT_META,
+} from "../shared/mcp-app.js";
 
 describe("widget sandbox permissions", () => {
   it("requests only clipboard write access", () => {
@@ -14,5 +18,11 @@ describe("widget sandbox permissions", () => {
     expect(result.contents[0]?._meta.ui.permissions).toEqual({
       clipboardWrite: {},
     });
+  });
+
+  it("uses the r5 resource URI so hosts fetch the updated widget", () => {
+    expect(RESOURCE_URI).toBe("ui://widget/compact-code-viewer-v1-r5.html");
+    const result = createWidgetResourceResult("<html></html>");
+    expect(result.contents[0]?.uri).toBe(RESOURCE_URI);
   });
 });
