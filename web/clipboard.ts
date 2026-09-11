@@ -12,8 +12,8 @@ export type ExactCopyResult =
 
 function getDefaultClipboard(): ClipboardWriter | undefined {
   if (typeof navigator === "undefined") return undefined;
-  const clipboard = navigator.clipboard;
-  return clipboard?.writeText ? clipboard : undefined;
+  const runtimeNavigator = navigator as unknown as { clipboard?: ClipboardWriter };
+  return runtimeNavigator.clipboard;
 }
 
 export async function writeExactText(
