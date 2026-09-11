@@ -26,8 +26,12 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Refresh reproducible lockfile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Rebuild reproducible lockfile cleanly
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f package-lock.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
       - name: Verify dependency audit
         run: npm audit --audit-level=high
