@@ -26,6 +26,11 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Use current npm 11
+        run: |
+          npm install --global npm@11.19.1
+          npm --version
+
       - name: Rebuild reproducible lockfile cleanly
         shell: bash
         run: |
