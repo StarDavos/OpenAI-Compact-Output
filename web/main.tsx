@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   useApp,
@@ -6,7 +6,6 @@ import {
   useHostStyles,
 } from "@modelcontextprotocol/ext-apps/react";
 import type { App as McpApp } from "@modelcontextprotocol/ext-apps";
-import { CopyButton } from "@openai/apps-sdk-ui/components/Button";
 import { CodeBlockBase } from "@openai/apps-sdk-ui/components/CodeBlock";
 import "@openai/apps-sdk-ui/css";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -20,6 +19,7 @@ import {
   type CodeMetadata,
   type CodeViewerInput,
 } from "../shared/code";
+import { writeExactText } from "./clipboard";
 import "./viewer.css";
 
 SyntaxHighlighter.registerLanguage("powershell", powershell);
@@ -27,6 +27,7 @@ SyntaxHighlighter.registerLanguage("batch", batch);
 
 type Phase = "waiting" | "streaming" | "awaiting-result" | "complete";
 type DisplayMode = "inline" | "pip" | "fullscreen";
+type CopyState = "idle" | "copying" | "copied" | "failed";
 
 type ChatGptHost = {
   toolInput?: unknown;
@@ -70,6 +71,10 @@ function CompactCodeViewer() {
   const [displayMode, setDisplayMode] = useState<DisplayMode>(getChatGptHost()?.displayMode ?? "inline");
   const [fallbackExpanded, setFallbackExpanded] = useState(false);
   const [displayModeError, setDisplayModeError] = useState<string | null>(null);
+  const [copyState, setCopyState] = useState<CopyState>("idle");
+  const [copyError, setCopyError] = useState<string | null>(null);
+  const manualCopyRef = useRef<HTMLTextAreaElement>(null);
+  const copiedTimerRef = useRef<number | null>(null);
 
   const { app, error } = useApp({
     appInfo: { name: "Compact Code Viewer", version: "0.1.0" },
@@ -78,10 +83,14 @@ function CompactCodeViewer() {
       createdApp.ontoolinputpartial = (params) => {
         setInput(asInput(params.arguments));
         setPhase("streaming");
+        setCopyState("idle");
+        setCopyError(null);
       };
       createdApp.ontoolinput = (params) => {
         setInput(asInput(params.arguments));
         setPhase("awaiting-result");
+        setCopyState("idle");
+        setCopyError(null);
       };
       createdApp.ontoolresult = (result) => {
         setMetadata(asMetadata(result.structuredContent));
@@ -94,6 +103,14 @@ function CompactCodeViewer() {
       };
     },
   });
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
 
   useHostStyles(app, app?.getHostContext());
   const theme = useDocumentTheme();
@@ -132,6 +149,46 @@ function CompactCodeViewer() {
     }
   }
 
+  function selectManualCopy() {
+    const field = manualCopyRef.current;
+    if (!field) return;
+    field.focus();
+    field.select();
+    field.setSelectionRange(0, field.value.length);
+  }
+
+  async function copyExactCode() {
+    if (!complete || !code || copyState === "copying") return;
+
+    if (copiedTimerRef.current !== null) {
+      window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = null;
+    }
+
+    setCopyError(null);
+    setCopyState("copying");
+
+    const result = await writeExactText(code);
+    if (result.ok) {
+      setCopyState("copied");
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopyState("idle");
+        copiedTimerRef.current = null;
+      }, 1300);
+      return;
+    }
+
+    const reason = result.reason === "unavailable"
+      ? "Clipboard access is unavailable in this ChatGPT host."
+      : result.errorName
+        ? `Clipboard write was blocked by the host (${result.errorName}).`
+        : "Clipboard write was blocked by the host.";
+
+    setCopyError(`${reason} The complete source is selected below for manual copy.`);
+    setCopyState("failed");
+    window.requestAnimationFrame(selectManualCopy);
+  }
+
   if (error) {
     return <div className="statusCard errorCard">Compact Code Viewer could not connect to the host: {error.message}</div>;
   }
@@ -148,6 +205,14 @@ function CompactCodeViewer() {
     return <div className="statusCard errorCard">No code was supplied. Copy is unavailable.</div>;
   }
 
+  const copyLabel = copyState === "copied"
+    ? "Copied"
+    : copyState === "copying"
+      ? "Copying..."
+      : copyState === "failed"
+        ? "Retry Copy"
+        : "Copy";
+
   return (
     <main className={`viewer ${fullscreen ? "fullscreen" : ""} ${fallbackExpanded ? "fallbackExpanded" : ""}`} data-theme={theme}>
       <header className="viewerHeader">
@@ -162,16 +227,15 @@ function CompactCodeViewer() {
             {phase === "streaming" && <span className="phaseBadge">Receiving...</span>}
           </div>
         </div>
-        <CopyButton
-          copyValue={() => code}
-          disabled={!complete}
-          variant="ghost"
-          color="secondary"
-          size="sm"
+        <button
+          type="button"
+          className="copyButton"
+          onClick={copyExactCode}
+          disabled={!complete || copyState === "copying"}
           aria-label={complete ? "Copy complete code" : "Copy disabled until complete code is verified"}
         >
-          {({ copied }) => copied ? "Copied" : "Copy"}
-        </CopyButton>
+          {copyLabel}
+        </button>
       </header>
 
       {payloadMismatch && (
@@ -185,6 +249,27 @@ function CompactCodeViewer() {
           <CodeBlockBase.Code language={languageInfo.syntax}>{code || "Receiving code..."}</CodeBlockBase.Code>
         </CodeBlockBase>
       </section>
+
+      {copyState === "failed" && (
+        <div className="copyFailure" role="alert">
+          <div className="copyFailureText">{copyError}</div>
+          <div className="manualCopyActions">
+            <button type="button" className="manualCopyButton" onClick={selectManualCopy}>
+              Select exact code
+            </button>
+            <span>Then press Ctrl+C on Windows/Linux or Cmd+C on macOS.</span>
+          </div>
+          <textarea
+            ref={manualCopyRef}
+            className="manualCopyField"
+            value={code}
+            readOnly
+            wrap="off"
+            spellCheck={false}
+            aria-label="Exact code manual copy fallback"
+          />
+        </div>
+      )}
 
       <footer className="viewerFooter">
         <button type="button" className="fullViewButton" onClick={toggleFullView} aria-label={fullscreen ? "Return to compact view" : "Open code in full view"}>
