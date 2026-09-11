@@ -5,7 +5,6 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 const endpoint = new URL(process.env.MCP_URL ?? "http://127.0.0.1:8787/mcp");
 const client = new Client({ name: "compact-code-viewer-smoke", version: "0.1.0" });
 const transport = new StreamableHTTPClientTransport(endpoint);
-const widgetResourceUri = "ui://widget/compact-code-viewer-v1-r2.html";
 
 function makeFixture(lines, width = 72) {
   return Array.from({ length: lines }, (_, index) => {
@@ -39,7 +38,15 @@ try {
   await client.connect(transport);
 
   const tools = await client.listTools();
-  assert(tools.tools.some((tool) => tool.name === "render_code"), "render_code tool was not listed");
+  const renderCodeTool = tools.tools.find((tool) => tool.name === "render_code");
+  assert(renderCodeTool, "render_code tool was not listed");
+
+  const widgetResourceUri = renderCodeTool._meta?.["openai/outputTemplate"] ?? renderCodeTool._meta?.ui?.resourceUri;
+  assert.equal(typeof widgetResourceUri, "string", "render_code did not advertise a widget resource URI");
+  assert(
+    widgetResourceUri.startsWith("ui://widget/compact-code-viewer-"),
+    `render_code advertised an unexpected widget resource URI: ${widgetResourceUri}`,
+  );
 
   for (const lines of [10, 100, 700, 1500]) {
     await assertRenderCode(lines);
