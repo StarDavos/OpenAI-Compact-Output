@@ -178,13 +178,11 @@ function CompactCodeViewer() {
       return;
     }
 
-    const reason = result.reason === "unavailable"
-      ? "Clipboard access is unavailable in this ChatGPT host."
-      : result.errorName
-        ? `Clipboard write was blocked by the host (${result.errorName}).`
-        : "Clipboard write was blocked by the host.";
+    const detail = result.reason === "unavailable"
+      ? "Clipboard API unavailable"
+      : result.errorName ?? "Clipboard write rejected";
 
-    setCopyError(`${reason} The complete source is selected below for manual copy.`);
+    setCopyError(detail);
     setCopyState("failed");
     window.requestAnimationFrame(selectManualCopy);
   }
@@ -210,7 +208,7 @@ function CompactCodeViewer() {
     : copyState === "copying"
       ? "Copying..."
       : copyState === "failed"
-        ? "Retry Copy"
+        ? "Try Copy Again"
         : "Copy";
 
   return (
@@ -251,14 +249,26 @@ function CompactCodeViewer() {
       </section>
 
       {copyState === "failed" && (
-        <div className="copyFailure" role="alert">
-          <div className="copyFailureText">{copyError}</div>
+        <section className="copyRecovery" role="alert" aria-labelledby="copyRecoveryTitle">
+          <div className="copyRecoveryTopline">
+            <div className="copyRecoveryMessage">
+              <div id="copyRecoveryTitle" className="copyRecoveryTitle">Manual copy ready</div>
+              <div className="copyRecoveryText">
+                One-click copy is not available in this ChatGPT host. Your verified source is intact and selected below.
+              </div>
+            </div>
+            <span className="copyRecoveryBadge">Exact source</span>
+          </div>
+
           <div className="manualCopyActions">
             <button type="button" className="manualCopyButton" onClick={selectManualCopy}>
               Select exact code
             </button>
-            <span>Then press Ctrl+C on Windows/Linux or Cmd+C on macOS.</span>
+            <span className="keyboardHint">
+              Press <kbd>Ctrl</kbd><span aria-hidden="true">+</span><kbd>C</kbd> on Windows/Linux or <kbd>Cmd</kbd><span aria-hidden="true">+</span><kbd>C</kbd> on macOS.
+            </span>
           </div>
+
           <textarea
             ref={manualCopyRef}
             className="manualCopyField"
@@ -266,9 +276,12 @@ function CompactCodeViewer() {
             readOnly
             wrap="off"
             spellCheck={false}
+            onFocus={selectManualCopy}
             aria-label="Exact code manual copy fallback"
           />
-        </div>
+
+          {copyError && <div className="copyFailureDetail">Host detail: {copyError}</div>}
+        </section>
       )}
 
       <footer className="viewerFooter">
