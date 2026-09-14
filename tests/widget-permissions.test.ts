@@ -20,8 +20,8 @@ describe("widget sandbox permissions", () => {
     });
   });
 
-  it("uses the r6 resource URI so hosts fetch the polished recovery UI", () => {
-    expect(RESOURCE_URI).toBe("ui://widget/compact-code-viewer-v1-r6.html");
+  it("uses the r7 resource URI so hosts fetch the host-aware copy UI", () => {
+    expect(RESOURCE_URI).toBe("ui://widget/compact-code-viewer-v1-r7.html");
     const result = createWidgetResourceResult("<html></html>");
     expect(result.contents[0]?.uri).toBe(RESOURCE_URI);
   });

@@ -1,7 +1,7 @@
 export const SERVER_NAME = "compact-code-viewer";
 export const SERVER_VERSION = "0.1.0";
 export const RENDER_CODE_TOOL_NAME = "render_code";
-export const RESOURCE_URI = "ui://widget/compact-code-viewer-v1-r6.html";
+export const RESOURCE_URI = "ui://widget/compact-code-viewer-v1-r7.html";
 export const RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 
 export const RENDER_CODE_TOOL_METADATA = {
@@ -39,7 +39,7 @@ export const WIDGET_CONTENT_META = {
     },
   },
   "openai/widgetDescription":
-    "Displays one complete independently copyable code or technical-text section in a bounded scroll area with exact-copy and fullscreen controls. Separate copy/paste sections are rendered as separate viewer blocks.",
+    "Displays one complete independently copyable code or technical-text section in a bounded scroll area with exact-source, host-aware copy, and fullscreen controls. Separate copy/paste sections are rendered as separate viewer blocks.",
   "openai/widgetPrefersBorder": true,
 } as const;
 
