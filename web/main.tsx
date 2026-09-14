@@ -27,7 +27,7 @@ SyntaxHighlighter.registerLanguage("batch", batch);
 
 type Phase = "waiting" | "streaming" | "awaiting-result" | "complete";
 type DisplayMode = "inline" | "pip" | "fullscreen";
-type CopyState = "idle" | "copying" | "copied" | "failed";
+type CopyState = "idle" | "copying" | "copied" | "manual";
 
 type ChatGptHost = {
   toolInput?: unknown;
@@ -35,8 +35,23 @@ type ChatGptHost = {
   requestDisplayMode?: (options: { mode: DisplayMode }) => Promise<unknown>;
 };
 
+type FeaturePolicyLike = {
+  allowsFeature?: (feature: string) => boolean;
+};
+
 function getChatGptHost(): ChatGptHost | undefined {
   return (window as Window & { openai?: ChatGptHost }).openai;
+}
+
+function clipboardWriteAllowedByPolicy(): boolean | null {
+  const featurePolicy = (document as Document & { featurePolicy?: FeaturePolicyLike }).featurePolicy;
+  if (!featurePolicy?.allowsFeature) return null;
+
+  try {
+    return featurePolicy.allowsFeature("clipboard-write");
+  } catch {
+    return null;
+  }
 }
 
 function asInput(value: unknown): Partial<CodeViewerInput> | null {
@@ -72,7 +87,6 @@ function CompactCodeViewer() {
   const [fallbackExpanded, setFallbackExpanded] = useState(false);
   const [displayModeError, setDisplayModeError] = useState<string | null>(null);
   const [copyState, setCopyState] = useState<CopyState>("idle");
-  const [copyError, setCopyError] = useState<string | null>(null);
   const manualCopyRef = useRef<HTMLTextAreaElement>(null);
   const copiedTimerRef = useRef<number | null>(null);
 
@@ -84,13 +98,11 @@ function CompactCodeViewer() {
         setInput(asInput(params.arguments));
         setPhase("streaming");
         setCopyState("idle");
-        setCopyError(null);
       };
       createdApp.ontoolinput = (params) => {
         setInput(asInput(params.arguments));
         setPhase("awaiting-result");
         setCopyState("idle");
-        setCopyError(null);
       };
       createdApp.ontoolresult = (result) => {
         setMetadata(asMetadata(result.structuredContent));
@@ -124,6 +136,7 @@ function CompactCodeViewer() {
   const shownLineCount = metadata?.lineCount ?? localLineCount;
   const shownCharacterCount = metadata?.characterCount ?? code.length;
   const fullscreen = displayMode === "fullscreen";
+  const manualCopyMode = copyState === "manual";
 
   async function toggleFullView() {
     setDisplayModeError(null);
@@ -157,15 +170,29 @@ function CompactCodeViewer() {
     field.setSelectionRange(0, field.value.length);
   }
 
+  function enterManualCopyMode() {
+    setCopyState("manual");
+    window.requestAnimationFrame(selectManualCopy);
+  }
+
   async function copyExactCode() {
     if (!complete || !code || copyState === "copying") return;
+
+    if (manualCopyMode) {
+      selectManualCopy();
+      return;
+    }
 
     if (copiedTimerRef.current !== null) {
       window.clearTimeout(copiedTimerRef.current);
       copiedTimerRef.current = null;
     }
 
-    setCopyError(null);
+    if (clipboardWriteAllowedByPolicy() === false) {
+      enterManualCopyMode();
+      return;
+    }
+
     setCopyState("copying");
 
     const result = await writeExactText(code);
@@ -178,13 +205,7 @@ function CompactCodeViewer() {
       return;
     }
 
-    const detail = result.reason === "unavailable"
-      ? "Clipboard API unavailable"
-      : result.errorName ?? "Clipboard write rejected";
-
-    setCopyError(detail);
-    setCopyState("failed");
-    window.requestAnimationFrame(selectManualCopy);
+    enterManualCopyMode();
   }
 
   if (error) {
@@ -207,8 +228,8 @@ function CompactCodeViewer() {
     ? "Copied"
     : copyState === "copying"
       ? "Copying..."
-      : copyState === "failed"
-        ? "Try Copy Again"
+      : copyState === "manual"
+        ? "Select to Copy"
         : "Copy";
 
   return (
@@ -230,7 +251,7 @@ function CompactCodeViewer() {
           className="copyButton"
           onClick={copyExactCode}
           disabled={!complete || copyState === "copying"}
-          aria-label={complete ? "Copy complete code" : "Copy disabled until complete code is verified"}
+          aria-label={complete ? (manualCopyMode ? "Select complete code for copying" : "Copy complete code") : "Copy disabled until complete code is verified"}
         >
           {copyLabel}
         </button>
@@ -248,13 +269,13 @@ function CompactCodeViewer() {
         </CodeBlockBase>
       </section>
 
-      {copyState === "failed" && (
-        <section className="copyRecovery" role="alert" aria-labelledby="copyRecoveryTitle">
+      {manualCopyMode && (
+        <section className="copyRecovery" role="status" aria-labelledby="copyRecoveryTitle">
           <div className="copyRecoveryTopline">
             <div className="copyRecoveryMessage">
-              <div id="copyRecoveryTitle" className="copyRecoveryTitle">Manual copy ready</div>
+              <div id="copyRecoveryTitle" className="copyRecoveryTitle">Ready to copy</div>
               <div className="copyRecoveryText">
-                One-click copy is not available in this ChatGPT host. Your verified source is intact and selected below.
+                This host uses browser selection for clipboard-safe copying. The verified source is selected below.
               </div>
             </div>
             <span className="copyRecoveryBadge">Exact source</span>
@@ -262,7 +283,7 @@ function CompactCodeViewer() {
 
           <div className="manualCopyActions">
             <button type="button" className="manualCopyButton" onClick={selectManualCopy}>
-              Select exact code
+              Select all
             </button>
             <span className="keyboardHint">
               Press <kbd>Ctrl</kbd><span aria-hidden="true">+</span><kbd>C</kbd> on Windows/Linux or <kbd>Cmd</kbd><span aria-hidden="true">+</span><kbd>C</kbd> on macOS.
@@ -277,10 +298,8 @@ function CompactCodeViewer() {
             wrap="off"
             spellCheck={false}
             onFocus={selectManualCopy}
-            aria-label="Exact code manual copy fallback"
+            aria-label="Exact code selected for copying"
           />
-
-          {copyError && <div className="copyFailureDetail">Host detail: {copyError}</div>}
         </section>
       )}
 
