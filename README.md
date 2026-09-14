@@ -1,6 +1,6 @@
 # Compact Code Viewer
 
-Compact Code Viewer is a ChatGPT MCP App that renders complete generated code and other large copyable technical text inside compact, scrollable cards instead of letting giant code blocks dominate the conversation.
+Compact Code Viewer is a ChatGPT MCP App that renders complete generated code and other large technical text inside compact, scrollable cards instead of letting giant code blocks dominate the conversation.
 
 The renderer is intentionally narrow:
 
@@ -12,7 +12,16 @@ The renderer is intentionally narrow:
 - heredoc/here-string wrappers stay intact as one atomic copy unit;
 - Copy remains locked unless line/character integrity metadata matches;
 - `Copied` is shown only after the browser clipboard write actually succeeds;
-- if the host blocks clipboard access, the widget exposes an exact-source manual selection path instead of silently reporting success or using a legacy programmatic fallback.
+- copy behavior is host-aware: one-click copy is used when the host/browser permits it, while restrictive hosts automatically switch to exact-source selection for normal `Ctrl+C` / `Cmd+C` copying;
+- restricted-host selection is treated as a supported copy mode, not as a false-success or legacy clipboard workaround.
+
+## Clipboard behavior
+
+Compact Code Viewer requests the MCP Apps `clipboardWrite` permission and uses the standard browser Clipboard API when the embedding host grants it.
+
+Some hosts can restrict programmatic clipboard writes inside embedded app frames. In that case, the viewer switches to an exact-source selection mode: the verified source is selected directly in the widget and the user completes the copy with the normal operating-system shortcut. Source integrity checks remain identical in both modes.
+
+The app never reports `Copied` unless the programmatic clipboard write actually succeeds, and it does not use `execCommand("copy")` or another silent legacy fallback.
 
 ## Deployment options
 
