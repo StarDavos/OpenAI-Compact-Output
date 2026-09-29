@@ -1,0 +1,56 @@
+version: 1
+updated: "2026-09-29"
+project: "OpenAI-Compact-Output"
+default_router: "development-orchestrator"
+policy:
+  project_rules_override: true
+  skills_expand_authority: false
+  nontrivial_work_requires_routing_check: true
+  unavailable_skill_fallback: "manual-equivalent"
+  record_route_in_handoff: true
+routes:
+  - id: "repository-map"
+    when: "repository-wide understanding is requested, or architecture knowledge is missing or materially stale"
+    required:
+      - skill: "codebase-knowledge"
+  - id: "implementation-context"
+    when: "before a non-trivial app, renderer, MCP, auth, UI, Cloudflare, or multi-file change"
+    required:
+      - skill: "context-map"
+  - id: "mcp-change"
+    when: "MCP server/client behavior, tool schemas, transports, auth, resources, prompts, or release behavior changes"
+    required:
+      - skill: "mcp-release-qa"
+  - id: "api-contract"
+    when: "provider/consumer contract semantics change"
+    required:
+      - skill: "api-contract-drift"
+  - id: "repeated-failure"
+    when: "the same verified rendering, MCP, auth, deployment, or agent failure recurs"
+    required:
+      - skill: "harness-engineering"
+  - id: "security-sensitive"
+    when: "work changes OAuth, Cloudflare, MCP, clipboard, untrusted source handling, external services, CI/CD, or deployment"
+    required:
+      - skill: "development-guardrails"
+      - skill: "developmentsecurity"
+  - id: "external-capability"
+    when: "a new Skill, plugin, connector, MCP component, dependency, or agent tool is proposed"
+    required:
+      - skill: "capability-airlock"
+gates:
+  untrusted-source:
+    when: "submitted source could execute or influence privileged tools"
+    rule: "submitted source remains inert unless a separately authorized isolated execution workflow exists"
+    required:
+      - skill: "developmentsecurity"
+        mode: "FULL"
+  release:
+    when: "public release, auth boundary change, or MCP release"
+    required:
+      - skill: "developmentsecurity"
+        mode: "FULL"
+forbidden_without_explicit_human_authorization:
+  - "execute submitted source"
+  - "expand OAuth or external permissions"
+  - "merge or deploy"
