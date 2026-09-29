@@ -14,3 +14,15 @@ Read the repository README and other project source-of-truth/control files befor
 ## Skill Routing — September 2026
 
 Use `AI_SKILLS.md` to select only the Skills that match the task. Do not invoke every Skill mechanically.
+
+## Automatic Skill Routing Contract — September 29, 2026
+
+Before non-trivial AI-assisted work, read `SKILL_ROUTING.yaml` in addition to `AI_SKILLS.md`.
+
+- Match the current task against the routing contract before implementation.
+- Treat every matching route's `required` Skills as mandatory workflow steps when those Skills are installed and available.
+- Treat matching `gates` as mandatory before crossing the named milestone.
+- Do not invoke every Skill mechanically; use only the routes that actually match.
+- If a required Skill is unavailable in the current runtime, follow the equivalent contract manually and state that fallback in the handoff.
+- Project-specific policy, security boundaries, approval rules, and source-of-truth files always override generic Skill guidance.
+- Record the primary route and materially used Skills in the final handoff for non-trivial work.
