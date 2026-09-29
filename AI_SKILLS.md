@@ -37,3 +37,11 @@ Submitted source remains inert and must never be executed. Verify the real hoste
 ## Adoption rule
 
 If an installed Skill is unavailable in a runtime, follow the same project-local rules manually rather than dropping the gate. When a current/latest claim matters, verify the authoritative upstream source before changing architecture or policy.
+
+## Automatic stage routing — September 29, 2026
+
+`SKILL_ROUTING.yaml` is the machine-readable project routing contract. For non-trivial work, consult it before implementation and invoke the Skills required by every matching route or gate when those Skills are installed and available.
+
+The stack above describes the project's core capabilities; it is not an exhaustive list of stage-specific specialists. The routing contract adds conditional specialists such as repository mapping, bounded context mapping, harness engineering, MCP/API QA, Microsoft engineering, creator intelligence, GTM, capability airlock, and supply-chain verification where applicable.
+
+Do not invoke every Skill mechanically. Project policy and human-approval boundaries remain controlling, and a Skill never expands authority.
