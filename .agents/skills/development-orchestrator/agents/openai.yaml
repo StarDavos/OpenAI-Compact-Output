@@ -1,0 +1,12 @@
+interface:
+  display_name: Development Orchestrator
+  short_description: Route complex dev work through the right build, debug, design, and verification loop
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

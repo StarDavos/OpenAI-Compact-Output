@@ -1,0 +1,85 @@
+version: 1
+name: replace-me
+purpose: "Describe the recurring task and measurable value."
+risk_class: low
+
+trigger:
+  type: manual
+  schedule: null
+  event: null
+
+scope:
+  allowed_paths:
+    - src/
+    - tests/
+  forbidden_paths:
+    - .github/branch-protection/
+    - secrets/
+  max_changed_files: 20
+  max_changed_lines: 1000
+
+state:
+  vision_file: VISION.md
+  state_file: STATE.md
+  lessons_file: LESSONS.md
+
+builder:
+  isolation: worktree
+  instructions: "Implement one bounded task only. Do not widen scope."
+
+deterministic_gates:
+  - name: tests
+    command: "replace-with-test-command"
+    required: true
+  - name: secret-scan
+    command: "replace-with-secret-scan-command"
+    required: true
+
+reviewer:
+  independent_context: true
+  prefer_different_model: true
+  stance: adversarial
+  verdicts:
+    - PASS
+    - FAIL
+    - ESCALATE
+
+security:
+  production_write_access: false
+  may_modify_security_controls: false
+  may_modify_budget: false
+  may_escalate_permissions: false
+  secrets_in_logs: forbidden
+  protected_branch_direct_write: false
+
+limits:
+  max_attempts: 3
+  max_runtime_minutes: 45
+  max_concurrency: 1
+  max_cost_usd: 10
+
+stop_conditions:
+  success: "All required gates pass and reviewer returns PASS."
+  circuit_breakers:
+    - repeated_identical_failure
+    - forbidden_scope_change
+    - security_control_change
+    - secret_exposure
+    - budget_exceeded
+
+escalation:
+  human_review_required: true
+  conditions:
+    - reviewer_returns_ESCALATE
+    - high_risk_change
+    - acceptance_condition_ambiguous
+    - retry_limit_reached
+
+metrics:
+  primary: cost_per_accepted_change
+  track:
+    - acceptance_rate
+    - human_correction_time
+    - evaluator_rejection_rate
+    - gate_failure_rate
+    - retries_per_accepted_result
