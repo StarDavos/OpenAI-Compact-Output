@@ -30,6 +30,7 @@
 
 ## Risks and unknowns
 
+- 2026-10-16 PR #9 existing CI dependency audit FAILED: npm audit reports 17 vulnerabilities (1 critical, 9 high, 2 moderate, 5 low), including proxy-addr IP-spoofing and MCP SDK OAuth client advisories. This PR does not change dependencies. Remediate via a separate reviewed dependency update; do not suppress the audit or blindly force breaking upgrades.
 - Local or currently hosted version may not match GitHub main or a historical release claim.
 - Pending PR and deployment readiness require fresh evidence; do not claim completion without it.
 - No destructive branch actions, merge, production deployment or expanded permissions to match a stale summary.
@@ -37,7 +38,7 @@
 ## Next steps
 
 1. Inspect Worker deployment hash and local/remote main divergence without exposing secrets or changing access rules.
-2. Run copy-integrity, MCP transport, build and host acceptance on exact tested commits.
+2. Triage npm audit findings in a separate reviewed dependency upgrade, then rerun copy-integrity, MCP transport, build and host acceptance on exact commits.
 3. Document verified deployment provenance, unresolved PRs and next bounded improvement before release changes.
 
 ## Evidence
