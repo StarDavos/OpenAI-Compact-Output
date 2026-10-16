@@ -1,0 +1,67 @@
+name: Project Handoff Check
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  project-handoff-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Validate handoff shape and PR update
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          from datetime import date
+          from pathlib import Path
+          import os, re, subprocess, sys
+          path = Path("PROJECT_HANDOFF.md")
+          errors = []
+          if not path.is_file():
+              errors.append("PROJECT_HANDOFF.md missing")
+          else:
+              body = path.read_text(encoding="utf-8")
+              lines = body.splitlines()
+              if len(lines) > 130 or len(lines) < 18:
+                  errors.append(f"Handoff must be 18-130 lines, got {len(lines)}")
+              for title in ("Current objective", "Verified state", "In flight", "Decisions and boundaries", "Risks and unknowns", "Next steps", "Evidence"):
+                  if f"## {title}" not in lines:
+                      errors.append(f"Missing section: {title}")
+              for key in ("Status:", "Repository:", "Observed GitHub main SHA:"):
+                  if key not in body:
+                      errors.append(f"Missing metadata: {key}")
+              stamp = re.search(r"(?m)^- Checkpoint UTC: (\d{4}-\d{2}-\d{2})$", body)
+              if stamp is None:
+                  errors.append("Missing ISO date after Checkpoint UTC")
+              else:
+                  try:
+                      age = (date.today() - date.fromisoformat(stamp.group(1))).days
+                      if age > 14 or age < -1:
+                          errors.append(f"Checkpoint date must be within 14 days (age={age})")
+                  except ValueError:
+                      errors.append("Invalid checkpoint date")
+              if not re.search(r"(?m)^1\. .+\n2\. .+\n3\. .+", body):
+                  errors.append("Need three explicit next steps")
+          if os.environ.get("EVENT_NAME") == "pull_request":
+              base, head = os.environ["BASE_SHA"], os.environ["HEAD_SHA"]
+              changed = subprocess.run(["git", "diff", "--name-only", f"{base}...{head}"], text=True, capture_output=True)
+              if changed.returncode != 0:
+                  errors.append("Cannot compare PR files: " + changed.stderr.strip())
+              elif changed.stdout.strip() and "PROJECT_HANDOFF.md" not in changed.stdout.splitlines():
+                  errors.append("PR must update PROJECT_HANDOFF.md")
+          if errors:
+              for error in errors:
+                  print("ERROR:", error, file=sys.stderr)
+              sys.exit(1)
+          print("Handoff structure PASS; manual evidence review still required")
+          PY
